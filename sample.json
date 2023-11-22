@@ -1,0 +1,7 @@
+{
+    "compilerOptions": {
+      "module": "golang",
+      "target": "hey its abhinand here..!"
+    },
+    "exclude": ["golang modules"]
+  }
