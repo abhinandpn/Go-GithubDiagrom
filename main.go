@@ -6,15 +6,22 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"sync"
 )
 
 const (
 	formTemplatePath = "templates/form.html"
 )
 
+var (
+	formDataMap = make(map[string]string)
+	mu          sync.Mutex
+)
+
 func main() {
 	http.HandleFunc("/", serveForm)
 	http.HandleFunc("/submit", handleSubmit)
+	http.HandleFunc("/data", getData)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	log.Println("Server started at :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -45,12 +52,40 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	resultText += fmt.Sprintf("<strong>IP Address:</strong> %s<br>", ipAddress)
 
+	// Save the data to the in-memory map
+	mu.Lock()
+	formDataMap[r.FormValue("email")] = resultText
+	mu.Unlock()
+
+	// Log the data to the terminal
+	log.Printf("Submitted Data: %s\n", resultText)
+
 	tmpl := template.Must(template.ParseFiles(formTemplatePath))
 	tmpl.Execute(w, struct {
 		Result string
 	}{
 		Result: resultText,
 	})
+}
+
+func getData(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	email := r.URL.Query().Get("email")
+	mu.Lock()
+	data, exists := formDataMap[email]
+	mu.Unlock()
+
+	if !exists {
+		http.Error(w, "Data not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, "<pre>%s</pre>", data)
 }
 
 func getClientIP() (string, error) {
