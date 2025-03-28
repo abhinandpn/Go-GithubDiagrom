@@ -38,34 +38,19 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.ParseForm()
-	resultText := "You submitted the following data:<br>"
-	for key, values := range r.Form {
-		for _, value := range values {
-			resultText += fmt.Sprintf("<strong>%s:</strong> %s<br>", key, value)
-		}
-	}
+	var requestBody map[string]string
 
-	ipAddress, err := getClientIP()
-	if err != nil {
-		ipAddress = "Unable to retrieve IP"
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
 	}
-	resultText += fmt.Sprintf("<strong>IP Address:</strong> %s<br>", ipAddress)
-
-	// Save the data to the in-memory map
-	mu.Lock()
-	formDataMap[r.FormValue("email")] = resultText
-	mu.Unlock()
 
 	// Log the data to the terminal
-	log.Printf("Submitted Data: %s\n", resultText)
+	log.Printf("Submitted Data: %+v\n", requestBody)
 
-	tmpl := template.Must(template.ParseFiles(formTemplatePath))
-	tmpl.Execute(w, struct {
-		Result string
-	}{
-		Result: resultText,
-	})
+	// Send the personal data back to the client
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(fmt.Sprintf("Personal Data:\n%s", formatData(requestBody))))
 }
 
 func getData(w http.ResponseWriter, r *http.Request) {
@@ -88,18 +73,10 @@ func getData(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<pre>%s</pre>", data)
 }
 
-func getClientIP() (string, error) {
-	resp, err := http.Get("https://api.ipify.org?format=json")
-	if err != nil {
-		return "", err
+func formatData(data map[string]string) string {
+	var result string
+	for key, value := range data {
+		result += fmt.Sprintf("%s: %s\n", key, value)
 	}
-	defer resp.Body.Close()
-
-	var result struct {
-		IP string `json:"ip"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
-	}
-	return result.IP, nil
+	return result
 }
